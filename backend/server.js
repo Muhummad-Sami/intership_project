@@ -23,9 +23,14 @@ app.get("/", (req, res) => {
   res.send("DriveLux API Running...");
 });
 
+// ✅ Connect to MongoDB (top-level – fine for serverless)
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB Connected"))
-  .catch((err) => console.log("MongoDB Error ❌", err.message));
+  .then(() => console.log("✅ MongoDB Connected"))
+  .catch((err) => console.log("❌ MongoDB Error:", err.message));
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// ❌ REMOVE the `app.listen` line – Vercel will call the exported app
+// const PORT = process.env.PORT || 5000;
+// app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT}`));
+
+// ✅ Export the app for Vercel
+export default app;
