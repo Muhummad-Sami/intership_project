@@ -1,4 +1,4 @@
-import app from "../server.js";
+import app from "../backend/server.js";
 
 export default async function handler(req, res) {
   await new Promise((resolve, reject) => {
