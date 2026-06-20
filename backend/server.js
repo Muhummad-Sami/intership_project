@@ -4,7 +4,6 @@ import cors from "cors";
 import dotenv from "dotenv";
 import authRoutes from "./routes/authRoutes.js";
 import bookingRoutes from "./routes/bookingRoutes.js";
-import reservationRoutes from "./routes/reservationRoutes.js";
 import carRoutes from "./routes/carRoutes.js";
 
 dotenv.config();
@@ -16,7 +15,6 @@ app.use(express.json());
 
 app.use("/api/auth", authRoutes);
 app.use("/api/bookings", bookingRoutes);
-app.use("/api/reservations", reservationRoutes);
 app.use("/api/cars", carRoutes);
 
 app.get("/", (req, res) => {
