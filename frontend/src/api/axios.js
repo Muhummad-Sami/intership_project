@@ -1,26 +1,44 @@
 import axios from "axios";
 import { getToken, logout } from "../utils/auth";
 
-// ✅ Use environment variable – works on Vercel and locally
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
+  baseURL:
+    import.meta.env.VITE_API_URL ||
+    "https://intershipproject-production.up.railway.app/api",
 });
+
 
 api.interceptors.request.use((config) => {
+
   const token = getToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
   return config;
+
 });
 
+
 api.interceptors.response.use(
-  (res) => res,
-  (err) => {
-    if (err.response?.status === 401) {
+  (response) => response,
+
+  (error) => {
+
+    if (
+      error.response?.status === 401 ||
+      error.response?.status === 403
+    ) {
       logout();
       window.location.href = "/login";
     }
-    return Promise.reject(err);
+
+    return Promise.reject(error);
+
   }
 );
+
 
 export default api;
