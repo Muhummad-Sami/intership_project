@@ -3,25 +3,48 @@ import { getToken, getUser, setToken, setUser, removeToken, removeUser } from ".
 
 const AuthContext = createContext();
 
+// ✅ Manual JWT decode – no external library needed
+const decodeToken = (token) => {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    return null;
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUserState] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // These will be set by ContextConnector later
   let refreshBookingsFn = null;
   let clearBookingsFn = null;
 
-  const registerRefresh = (refreshFn, clearFn) => {
-    refreshBookingsFn = refreshFn;
-    clearBookingsFn = clearFn;
+  const logout = () => {
+    removeToken();
+    removeUser();
+    setUserState(null);
+    if (clearBookingsFn) clearBookingsFn();
   };
 
   useEffect(() => {
     const token = getToken();
     const userData = getUser();
+
     if (token && userData) {
-      setUserState(userData);
-      if (refreshBookingsFn) refreshBookingsFn();
+      const decoded = decodeToken(token);
+      if (decoded && decoded.exp * 1000 < Date.now()) {
+        logout();
+      } else {
+        setUserState(userData);
+        if (refreshBookingsFn) refreshBookingsFn();
+      }
     }
     setLoading(false);
   }, []);
@@ -33,12 +56,9 @@ export const AuthProvider = ({ children }) => {
     if (refreshBookingsFn) refreshBookingsFn();
   };
 
-  const logout = () => {
-    removeToken();
-    removeUser();
-    setUserState(null);
-    if (clearBookingsFn) clearBookingsFn();
-    if (refreshBookingsFn) refreshBookingsFn(); // fetches with no token → clears bookings
+  const registerRefresh = (refreshFn, clearFn) => {
+    refreshBookingsFn = refreshFn;
+    clearBookingsFn = clearFn;
   };
 
   return (

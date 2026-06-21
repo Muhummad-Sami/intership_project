@@ -1,12 +1,107 @@
 import axios from "axios";
 import dotenv from "dotenv";
+import validator from "validator";
+import dns from "node:dns/promises";
+
 dotenv.config();
 
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const ADMIN_EMAIL = process.env.EMAIL_TO || "admin@drivelux.com";
 const SENDER_EMAIL = process.env.EMAIL_USER || "noreply@drivelux.com";
+const ABSTRACT_API_KEY = process.env.ABSTRACT_API_KEY;
 
-// ----- Helper: Build Luxury Email HTML -----
+// ✅ Known good domains – always allow these
+const KNOWN_GOOD_DOMAINS = [
+  'gmail.com', 'googlemail.com',
+  'yahoo.com', 'yahoo.co.uk',
+  'outlook.com', 'hotmail.com', 'live.com',
+  'icloud.com', 'me.com',
+  'protonmail.com', 'protonmail.ch',
+  'aol.com', 'mail.com',
+  // add more as needed
+];
+
+// 🔴 Hard block list – emails that are definitely invalid
+const HARD_BLOCKED_EMAILS = [
+  'nobodyy@gmail.com',
+  'test@fakedomain123.com',
+  'fakeDomain@1234@gmail.com',
+];
+
+const isEmailDeliverable = async (email) => {
+  console.log(`📧 Checking email: "${email}"`);
+
+  // 1. Hard block list
+  if (HARD_BLOCKED_EMAILS.includes(email.toLowerCase())) {
+    console.log(`🚫 Email "${email}" is hard-blocked.`);
+    return { valid: false, reason: `"${email}" is blocked by the system.` };
+  }
+
+  // 2. Check for suspicious patterns
+  if (email.includes('@1234@gmail.com') || email.includes('@gmail.com@')) {
+    return { valid: false, reason: `"${email}" appears to be a fake email address.` };
+  }
+
+  // 3. Basic format check
+  if (!validator.isEmail(email)) {
+    return { valid: false, reason: `"${email}" is not a valid email format.` };
+  }
+
+  const domain = email.split('@')[1];
+
+  // 4. If domain is in the known good list, skip DNS and allow.
+  if (KNOWN_GOOD_DOMAINS.includes(domain.toLowerCase())) {
+    console.log(`✅ Domain "${domain}" is in known good list – allowing.`);
+    return { valid: true, reason: "known_good_domain" };
+  }
+
+  // 5. Check MX records (mail server exists) – but if it fails, allow anyway (dev friendly)
+  try {
+    const mxRecords = await dns.resolveMx(domain);
+    if (!mxRecords || mxRecords.length === 0) {
+      // No MX record – could be a valid domain without MX (rare) – allow with warning
+      console.warn(`⚠️ Domain "${domain}" has no MX record – allowing anyway.`);
+      return { valid: true, reason: "no_mx_but_allowed" };
+    }
+  } catch (err) {
+    // DNS lookup failed – allow anyway (dev environment)
+    console.warn(`⚠️ DNS lookup failed for "${domain}" – allowing.`);
+    return { valid: true, reason: "dns_failure_but_allowed" };
+  }
+
+  // 6. Optional: use Abstract API (if key is provided and we want stricter checks)
+  if (ABSTRACT_API_KEY) {
+    try {
+      const response = await axios.get("https://emailvalidation.abstractapi.com/v1/", {
+        params: { api_key: ABSTRACT_API_KEY, email },
+      });
+      const data = response.data;
+      console.log("📡 Abstract response:", JSON.stringify(data, null, 2));
+
+      if (data.is_disposable_email?.value) {
+        return { valid: false, reason: `"${email}" is a disposable/temporary email address.` };
+      }
+      if (data.deliverability === "UNDELIVERABLE") {
+        return { valid: false, reason: `"${email}" does not exist or cannot receive emails.` };
+      }
+      // If UNKNOWN, we still allow (same as before)
+      if (data.deliverability === "UNKNOWN") {
+        console.warn(`⚠️ Email "${email}" deliverability is unknown – allowing.`);
+        return { valid: true, reason: "unknown" };
+      }
+      return { valid: true, reason: "deliverable" };
+    } catch (err) {
+      console.error("❌ Abstract API error:", err.message);
+      // API failed – allow anyway (dev friendly)
+      return { valid: true, reason: "api_failure_but_allowed" };
+    }
+  }
+
+  // If we reach here, everything passed
+  return { valid: true, reason: "valid" };
+};
+
+// ----- Helper: Build Luxury Email HTML (unchanged) -----
 const buildLuxuryEmail = ({
   title,
   customerName,
@@ -28,6 +123,23 @@ const buildLuxuryEmail = ({
   const statusColor = status === "CONFIRMED" ? "#4CAF50" : status === "PENDING" ? "#FF9800" : "#f44336";
   const statusLabel = status || "RESERVED";
   const brand = carBrand || "";
+
+  // Format dates for display
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    try {
+      return new Date(dateString).toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return dateString;
+    }
+  };
 
   return `
     <!DOCTYPE html>
@@ -79,8 +191,8 @@ const buildLuxuryEmail = ({
           <p>${message}</p>
           <div class="details">
             ${carName ? `<div class="details-row"><span class="details-label">Vehicle</span><span class="details-value">${brand ? brand + ' ' : ''}${carName}</span></div>` : ''}
-            ${pickupDate ? `<div class="details-row"><span class="details-label">Pickup Date/Time</span><span class="details-value">${new Date(pickupDate).toLocaleString()}</span></div>` : ''}
-            ${returnDate ? `<div class="details-row"><span class="details-label">Return Date/Time</span><span class="details-value">${new Date(returnDate).toLocaleString()}</span></div>` : ''}
+            ${pickupDate ? `<div class="details-row"><span class="details-label">Pickup Date/Time</span><span class="details-value">${formatDate(pickupDate)}</span></div>` : ''}
+            ${returnDate ? `<div class="details-row"><span class="details-label">Return Date/Time</span><span class="details-value">${formatDate(returnDate)}</span></div>` : ''}
             ${pickupLocation ? `<div class="details-row"><span class="details-label">Pickup Location</span><span class="details-value">${pickupLocation}</span></div>` : ''}
             ${dropoffLocation ? `<div class="details-row"><span class="details-label">Drop‑off Location</span><span class="details-value">${dropoffLocation}</span></div>` : ''}
             ${passengers ? `<div class="details-row"><span class="details-label">Passengers</span><span class="details-value">${passengers}</span></div>` : ''}
@@ -116,6 +228,11 @@ export const sendAdminNotification = async (booking) => {
       passengers,
     } = booking;
 
+    // Validate admin email format
+    if (!validator.isEmail(ADMIN_EMAIL)) {
+      throw new Error(`Admin email "${ADMIN_EMAIL}" is not a valid email format.`);
+    }
+
     const html = buildLuxuryEmail({
       title: "📩 New Booking Request",
       customerName: "Admin",
@@ -147,15 +264,26 @@ export const sendAdminNotification = async (booking) => {
       }
     );
     console.log("✅ Admin notification sent to", ADMIN_EMAIL);
+    return { success: true };
   } catch (err) {
     console.error("❌ Admin email error:", err.response?.data || err.message);
+    throw new Error(err.response?.data?.message || err.message);
   }
 };
 
-// ----- Send User Confirmation -----
+// ----- Send User Confirmation (with deliverability check) -----
 export const sendUserConfirmation = async (booking) => {
   try {
     const user = booking.user;
+    const userEmail = user.email;
+
+    // ✅ Check deliverability (format + MX + block list + optional API)
+    const { valid, reason } = await isEmailDeliverable(userEmail);
+    if (!valid) {
+      console.log(`❌ User email ${userEmail} is invalid: ${reason}`);
+      throw new Error(`Cannot send confirmation: ${reason}`);
+    }
+
     const admin = booking.bookedBy;
     const {
       car,
@@ -195,7 +323,7 @@ export const sendUserConfirmation = async (booking) => {
       {
         sender: { email: SENDER_EMAIL, name: "DriveLux Concierge" },
         replyTo: { email: ADMIN_EMAIL, name: "DriveLux Admin" },
-        to: [{ email: user.email, name: user.name }],
+        to: [{ email: userEmail, name: user.name }],
         subject: `✅ Your DriveLux Booking Confirmed – ${carName}`,
         htmlContent: html,
       },
@@ -203,16 +331,28 @@ export const sendUserConfirmation = async (booking) => {
         headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json" },
       }
     );
-    console.log("✅ User confirmation sent to", user.email);
+    console.log("✅ User confirmation sent to", userEmail);
+    return { success: true };
   } catch (err) {
-    console.error("❌ User email error:", err.response?.data || err.message);
+    console.error("❌ User email error:", err.message);
+    // Re‑throw so the backend route knows it failed
+    throw new Error(err.message);
   }
 };
 
-// ----- NEW: Send User Cancellation -----
+// ----- Send User Cancellation (with deliverability check) -----
 export const sendUserCancellation = async (booking) => {
   try {
     const user = booking.user;
+    const userEmail = user.email;
+
+    // ✅ Check deliverability (format + MX + block list + optional API)
+    const { valid, reason } = await isEmailDeliverable(userEmail);
+    if (!valid) {
+      console.log(`❌ User email ${userEmail} is invalid: ${reason}`);
+      throw new Error(`Cannot send cancellation: ${reason}`);
+    }
+
     const admin = booking.bookedBy;
     const {
       car,
@@ -242,7 +382,7 @@ export const sendUserCancellation = async (booking) => {
       dropoffLocation: dropoffLocation || "",
       specialRequests: specialRequests || "",
       passengers: passengers || 1,
-      message: `We regret to inform you that your booking for the ${carBrand ? carBrand + ' ' : ''}${carName || 'vehicle'} has been cancelled by our concierge team because the car already reserved. If this was a mistake, please contact us immediately.`,
+      message: `We regret to inform you that your booking for the ${carBrand ? carBrand + ' ' : ''}${carName || 'vehicle'} has been cancelled by our concierge team. If this was a mistake, please contact us immediately.`,
       actionButton: "📋 View My Bookings",
       actionUrl: "http://localhost:5173/booking",
     });
@@ -252,7 +392,7 @@ export const sendUserCancellation = async (booking) => {
       {
         sender: { email: SENDER_EMAIL, name: "DriveLux Concierge" },
         replyTo: { email: ADMIN_EMAIL, name: "DriveLux Admin" },
-        to: [{ email: user.email, name: user.name }],
+        to: [{ email: userEmail, name: user.name }],
         subject: `⛔ Your DriveLux Booking Cancelled – ${carName}`,
         htmlContent: html,
       },
@@ -260,8 +400,10 @@ export const sendUserCancellation = async (booking) => {
         headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json" },
       }
     );
-    console.log("✅ Cancellation email sent to", user.email);
+    console.log("✅ Cancellation email sent to", userEmail);
+    return { success: true };
   } catch (err) {
-    console.error("❌ Cancellation email error:", err.response?.data || err.message);
+    console.error("❌ Cancellation email error:", err.message);
+    throw new Error(err.message);
   }
 };

@@ -52,11 +52,14 @@ export const BookingProvider = ({ children }) => {
       return false;
     }
     try {
-      const { car, startDate, endDate, pickupLocation, dropoffLocation, specialRequests, passengers } = payload;
+      const { car, startDate, endDate, pickupLocation, dropoffLocation, specialRequests, passengers, timezone } = payload;
       const endpoint = isRequest ? "/bookings/request" : "/bookings";
 
+      // ✅ Ensure we send a valid carId with fallback
+      const carId = String(car.carId || car.id || car._id);
+
       const res = await api.post(endpoint, {
-        carId: String(car.carId || car.id),
+        carId: carId,
         carName: car.name,
         car: car,
         startDate,
@@ -65,6 +68,7 @@ export const BookingProvider = ({ children }) => {
         dropoffLocation,
         specialRequests,
         passengers,
+        timezone,
       });
 
       const newBooking = {

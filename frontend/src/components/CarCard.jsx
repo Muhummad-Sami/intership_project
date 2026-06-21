@@ -8,10 +8,14 @@ export default function CarCard({ car }) {
   const { user } = useAuth();
   const token = getToken();
 
+  // ✅ Determine status text and color based on availability
+  const isAvailable = car.available ?? true;
+  const statusText = isAvailable ? "Available Today" : "Reserved";
+  const statusColor = isAvailable ? "#4CAF50" : "#f44336";
+
   const handleAction = (e) => {
     e?.stopPropagation?.();
     if (!token || !user) {
-      // ✅ Redirect to login, preserving the intended page AND the car object
       navigate("/login", {
         state: {
           from: { pathname: `/car/${car.carId}`, state: { car } },
@@ -19,7 +23,6 @@ export default function CarCard({ car }) {
       });
       return;
     }
-    // ✅ Go to details with the car object in state
     navigate(`/car/${car.carId}`, { state: { car } });
   };
 
@@ -34,21 +37,40 @@ export default function CarCard({ car }) {
             background: "linear-gradient(to top, rgba(18,20,20,0.85), transparent)",
           }}
         />
+
+        {/* ✅ NEW Availability Status Badge */}
         <div style={{ position: "absolute", top: 16, left: 16 }}>
-          <span className={car.available ? "badge-available" : "badge-unavailable"}>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "4px 12px",
+              borderRadius: 20,
+              fontSize: 10,
+              fontWeight: 600,
+              background: isAvailable
+                ? "rgba(76,175,80,0.15)"
+                : "rgba(244,67,54,0.15)",
+              color: statusColor,
+              border: `1px solid ${statusColor}33`,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
             <span
               style={{
                 width: 6,
                 height: 6,
                 borderRadius: "50%",
-                background: "currentColor",
+                background: statusColor,
                 display: "inline-block",
-                marginRight: 8,
               }}
             />
-            {car.available ? "Available" : "Reserved"}
+            {statusText}
           </span>
         </div>
+
         <div style={{ position: "absolute", top: 12, right: 12 }}>
           <span
             className="label-caps"

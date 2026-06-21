@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import api from '../api/axios';
-import CarCard from '../components/CarCard';
+import React, { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import api from "../api/axios";
+import CarCard from "../components/CarCard";
 
-// Static categories – you can also derive from API if you want
+// ✅ Match the exact category names from your database
 const categories = ['All', 'Luxury', 'SUV', 'Sports', 'Electric'];
 
 export default function CarsPage() {
@@ -14,24 +14,34 @@ export default function CarsPage() {
   const [cars, setCars] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // ✅ Fetch cars from API
+  // ✅ Fetch cars – always set an array
   useEffect(() => {
     api.get("/cars")
-      .then(res => setCars(res.data))
-      .catch(err => console.error("Failed to load cars", err))
+      .then(res => {
+        const data = Array.isArray(res.data) ? res.data : [];
+        setCars(data);
+      })
+      .catch(err => {
+        console.error("Failed to load cars", err);
+        setCars([]);
+      })
       .finally(() => setLoading(false));
   }, []);
 
-  // Sync category with URL param
+  // Sync category from URL
   useEffect(() => {
     const cat = searchParams.get('category');
-    if (cat) setActiveCategory(cat);
+    if (cat) {
+      const found = categories.find(c => c.toLowerCase() === cat.toLowerCase());
+      setActiveCategory(found || 'All');
+    }
   }, [searchParams]);
 
-  // Filter and sort
+  // ✅ Filter – case‑insensitive, safe
   const filtered = cars
     .filter(car => {
-      const matchCat = activeCategory === 'All' || car.category === activeCategory;
+      const matchCat = activeCategory === 'All' ||
+        car.category.toLowerCase() === activeCategory.toLowerCase();
       const matchSearch = car.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         car.brand.toLowerCase().includes(searchQuery.toLowerCase());
       return matchCat && matchSearch;
@@ -49,15 +59,14 @@ export default function CarsPage() {
 
   const handleCategory = (cat) => {
     setActiveCategory(cat);
-    if (cat === 'All') setSearchParams({});
-    else setSearchParams({ category: cat });
+    setSearchParams(cat === 'All' ? {} : { category: cat });
   };
 
   if (loading) return <div style={{ paddingTop: 73, textAlign: "center" }}>Loading fleet...</div>;
 
   return (
     <div style={{ paddingTop: 73, minHeight: '100vh' }}>
-      {/* Page Header */}
+      {/* Header */}
       <div style={{ background: 'var(--surface-container-lowest)', padding: '64px 80px 48px', position: 'relative', overflow: 'hidden' }}>
         <div className="glow-bg" style={{ width: 500, height: 300, top: '-100px', right: '-50px', zIndex: 0 }} />
         <div className="container" style={{ position: 'relative', zIndex: 1, padding: 0 }}>
@@ -71,10 +80,9 @@ export default function CarsPage() {
         </div>
       </div>
 
-      {/* Filters Bar */}
+      {/* Filters */}
       <div style={{ background: 'var(--surface-container)', borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '20px 80px', position: 'sticky', top: 73, zIndex: 50 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', maxWidth: 1440, margin: '0 auto' }}>
-          {/* Search */}
           <div className="search-box">
             <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--outline)' }}>search</span>
             <input
@@ -84,25 +92,33 @@ export default function CarsPage() {
             />
           </div>
 
-          {/* Category pills */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {categories.map(cat => (
-              <button key={cat} className={`filter-pill ${activeCategory === cat ? 'active' : ''}`}
-                onClick={() => handleCategory(cat)}>
-                {cat}
+              <button
+                key={cat}
+                className={`filter-pill ${activeCategory === cat ? 'active' : ''}`}
+                onClick={() => handleCategory(cat)}
+              >
+                {cat.toUpperCase()}
               </button>
             ))}
           </div>
 
-          {/* Sort */}
           <div style={{ marginLeft: 'auto' }}>
             <select
               value={sortBy}
               onChange={e => setSortBy(e.target.value)}
               style={{
-                background: 'var(--surface-container-high)', border: '1px solid rgba(255,255,255,0.1)',
-                color: 'var(--on-surface)', borderRadius: 4, padding: '8px 14px',
-                fontSize: 12, letterSpacing: '0.05em', fontWeight: 600, cursor: 'pointer', outline: 'none',
+                background: 'var(--surface-container-high)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: 'var(--on-surface)',
+                borderRadius: 4,
+                padding: '8px 14px',
+                fontSize: 12,
+                letterSpacing: '0.05em',
+                fontWeight: 600,
+                cursor: 'pointer',
+                outline: 'none',
               }}
             >
               <option value="default">Sort: Default</option>
@@ -131,7 +147,9 @@ export default function CarsPage() {
           <div style={{ textAlign: 'center', padding: '80px 20px' }}>
             <span className="material-symbols-outlined" style={{ fontSize: 56, color: 'var(--outline)', display: 'block', marginBottom: 16 }}>directions_car</span>
             <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 24, color: 'var(--on-surface)', marginBottom: 8 }}>No vehicles found</h3>
-            <p style={{ color: 'var(--on-surface-variant)' }}>Try adjusting your search or filter criteria.</p>
+            <p style={{ color: 'var(--on-surface-variant)' }}>
+              {cars.length === 0 ? 'No cars in the database. Please seed cars.' : 'Try adjusting your search or filter criteria.'}
+            </p>
           </div>
         )}
       </div>
